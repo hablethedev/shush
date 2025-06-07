@@ -227,6 +227,21 @@ func shortenHandler(db *sql.DB) http.HandlerFunc {
         }
         originalURL := sanitizeURL(orig)
 
+        var existingKey string
+        queryExisting := fmt.Sprintf("SELECT key FROM %s WHERE url = ?", cfg.DBTableName)
+        err := db.QueryRow(queryExisting, originalURL).Scan(&existingKey)
+        if err == nil {
+            scheme := "https"
+            if !cfg.ForceHTTPS {
+                scheme = "http"
+            }
+            fmt.Fprintf(w, "%s://%s/l/%s", scheme, r.Host, existingKey)
+            return
+        } else if err != sql.ErrNoRows {
+            http.Error(w, "db error", http.StatusInternalServerError)
+            return
+        }
+
         var key string
         for {
             k, err := generateKey(cfg.KeyLength)
@@ -256,9 +271,10 @@ func shortenHandler(db *sql.DB) http.HandlerFunc {
         if !cfg.ForceHTTPS {
             scheme = "http"
         }
-        fmt.Fprintf(w, "short-url: \"%s://%s/l/%s\"", scheme, r.Host, key)
+        fmt.Fprintf(w, "%s://%s/l/%s", scheme, r.Host, key)
     }
 }
+
 
 func redirectHandler(db *sql.DB) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
